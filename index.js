@@ -1,8 +1,9 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (V3)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (V4)
 // =================================================================
-// This version includes a new endpoint for generating quizzes
-// with a dynamic number of questions based on requested duration.
+// This version includes a much larger, more realistic set of mock
+// questions and topics to simulate a populated database and provide
+// a richer, less repetitive user experience.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -20,7 +21,6 @@ app.use(express.json());
 app.use(cors());
 
 // --- DATABASE CONNECTION ---
-// Render provides the DATABASE_URL environment variable automatically.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -31,42 +31,40 @@ const pool = new Pool({
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
 
-
-// =================================================================
-// --- 3. DATABASE SCHEMA (For Reference) ---
-// =================================================================
-/*
-  This backend assumes the following PostgreSQL tables exist.
-  You would run these CREATE TABLE commands in your database once.
-
-  CREATE TABLE users (...);
-  CREATE TABLE user_stats (...);
-  CREATE TABLE user_mastery (...);
-  CREATE TABLE user_achievements (...);
-
-  CREATE TABLE topics (
-    topic_id SERIAL PRIMARY KEY,
-    topic_name VARCHAR(255) UNIQUE NOT NULL
-  );
-
-  CREATE TABLE questions (
-    question_id SERIAL PRIMARY KEY,
-    topic_id INT NOT NULL REFERENCES topics(topic_id),
-    question_text TEXT NOT NULL,
-    difficulty INT NOT NULL, -- 1 to 5
-    explanation TEXT,
-    eli5_explanation TEXT
-  );
-
-  CREATE TABLE question_options (
-    option_id SERIAL PRIMARY KEY,
-    question_id INT NOT NULL REFERENCES questions(question_id) ON DELETE CASCADE,
-    option_text VARCHAR(255) NOT NULL,
-    is_correct BOOLEAN NOT NULL DEFAULT false
-  );
-*/
-// =================================================================
-
+// --- MOCK DATABASE (for content, as DB is not populated yet) ---
+const contentDB = {
+    topics: [
+        { id: 1, name: 'Coaching Structure' },
+        { id: 2, name: 'Coaching Process' },
+        { id: 3, name: 'Health & Wellness' },
+        { id: 4, name: 'Ethics, Legal & Professional Responsibility' },
+        { id: 5, name: 'Motivational Interviewing' },
+        { id: 6, name: 'SMART Goals' },
+        { id: 7, name: 'HIPAA Basics' },
+    ],
+    questions: {
+        'Motivational Interviewing': [
+            { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", explanation: "Expressing empathy is foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels." },
+            { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it' to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.'" },
+            { id: 3, question: "Change talk is elicited from the...", options: ["Coach", "Client"], answer: "Client", explanation: "The coach's job is to evoke and strengthen the client's own arguments for change.", eli5: "You help the person say why *they* want to change." },
+            { id: 4, question: "The 'D' in DARN CAT stands for:", options: ["Desire", "Decision"], answer: "Desire", explanation: "DARN CAT is a mnemonic for types of change talk. 'D' stands for Desire (e.g., 'I want to...').", eli5: "'D' is for 'Desire,' like 'I wish I could...'" },
+            { id: 12, question: "OARS stands for Open questions, Affirmations, Reflections, and...?", options: ["Summaries", "Solutions"], answer: "Summaries", explanation: "OARS is a set of fundamental communication skills in MI.", eli5: "OARS are the basic tools for a good coaching chat." },
+        ],
+        'SMART Goals': [
+            { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", explanation: "A specific goal has a much greater chance of being accomplished than a general goal.", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do." },
+            { id: 6, question: "Which goal is most 'Measurable'?", options: ["'I will exercise more'", "'I will walk 3 times a week for 30 minutes'"], answer: "'I will walk 3 times a week for 30 minutes'", explanation: "A measurable goal allows you to track your progress.", eli5: "You can count '3 times a week.' You can't easily count 'more.'" },
+            { id: 7, question: "'T' in SMART?", options: ["Time-bound", "Truthful"], answer: "Time-bound", explanation: "A time-bound goal has a target date, creating urgency.", eli5: "It means you set a deadline." },
+            { id: 13, question: "'A' in SMART?", options: ["Achievable", "Ambitious"], answer: "Achievable", explanation: "The goal should be realistic and attainable for the individual.", eli5: "It means it's something you can actually do." },
+            { id: 14, question: "'R' in SMART?", options: ["Relevant", "Realistic"], answer: "Relevant", explanation: "The goal matters to the individual and aligns with their broader objectives.", eli5: "It means the goal is important to you." },
+        ],
+        'HIPAA Basics': [
+            { id: 8, question: "What does HIPAA stand for?", options: ["Health Info Portability & Accountability Act", "Health Insurance Privacy & Access Act"], answer: "Health Info Portability & Accountability Act", explanation: "HIPAA is a federal law that protects sensitive patient health information.", eli5: "It's the law that says doctors must keep your health info private." },
+            { id: 9, question: "Which is considered PHI?", options: ["A client's name", "Public data"], answer: "A client's name", explanation: "Any information that can be used to identify an individual and relates to their health is PHI.", eli5: "If it's about your health and has your name on it, it's private." },
+            { id: 10, question: "Can a coach share client info without consent?", options: ["Yes, if it helps the client", "No, not without explicit consent"], answer: "No, not without explicit consent", explanation: "Sharing PHI without written authorization is a violation of HIPAA.", eli5: "You can't tell anyone about a client's health stuff unless they say it's okay in writing." },
+            { id: 11, question: "A 'business associate' under HIPAA must also...?", options: ["Protect PHI", "Ignore PHI"], answer: "Protect PHI", explanation: "Business associates are also directly liable under HIPAA and must protect any PHI they handle.", eli5: "If a company helps a doctor, that company also has to keep patient info safe." },
+        ]
+    }
+};
 
 // --- 4. AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -81,12 +79,9 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-
-// =================================================================
 // --- 5. API ROUTES ---
-// =================================================================
 
-// --- AUTHENTICATION ROUTES ---
+// --- AUTH ROUTES ---
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
@@ -104,11 +99,9 @@ app.post('/api/auth/register', async (req, res) => {
         const newUser = await client.query(newUserQuery, [fullName, email, passwordHash]);
         const userId = newUser.rows[0].user_id;
 
-        // Initialize stats and mastery for the new user
-        await client.query('INSERT INTO user_stats (user_id, points, current_streak) VALUES ($1, 0, 0)', [userId]);
-        const topics = ['Coaching Structure', 'Coaching Process', 'Health & Wellness', 'Ethics, Legal & Professional Responsibility', 'Motivational Interviewing', 'SMART Goals', 'HIPAA Basics'];
-        for (const topic of topics) {
-            await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, topic]);
+        await client.query('INSERT INTO user_stats (user_id, points, current_streak, level, readiness) VALUES ($1, 0, 0, 1, 5)', [userId]);
+        for (const topic of contentDB.topics) {
+            await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, topic.name]);
         }
 
         await client.query('COMMIT');
@@ -144,8 +137,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-
-// --- PROTECTED DATA ROUTES ---
+// --- DATA ROUTES ---
 
 app.get('/api/user/data', authenticateToken, async (req, res) => {
   try {
@@ -169,9 +161,7 @@ app.get('/api/user/data', authenticateToken, async (req, res) => {
     res.json({
         stats: statsRes.rows[0],
         mastery: mastery,
-        unlockedAchievements: unlockedAchievements,
-        planSettings: null, 
-        personalizedPlan: null
+        unlockedAchievements: unlockedAchievements
     });
 
   } catch (error) {
@@ -180,67 +170,24 @@ app.get('/api/user/data', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/quizzes - Generate a new quiz
 app.post('/api/quizzes', authenticateToken, async (req, res) => {
     try {
         const { topic, duration } = req.body;
-        const userId = req.user.userId;
-
-        // Simple logic: assume 1.5 minutes per question
         const numQuestions = Math.max(1, Math.floor(duration / 1.5));
-
-        // In a real app, you would have a much more sophisticated query here
-        // that uses the adaptive logic from our blueprint (checking mastery, etc.)
-        // For now, we'll just grab random questions on the topic.
-        // This part of the code assumes you have populated your database with questions.
-        // Since we haven't done that, this will return an empty array.
-        // We will rely on the frontend's mockApi for quiz questions for now.
         
-        // This is a placeholder for where the real database query would go.
-        const questionsFromDb = []; // This would be populated from your DB.
-
-        // If the database has no questions for the topic, we fall back to the mock.
-        if (questionsFromDb.length === 0) {
-            console.log(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
-            const mockQuestions = await getMockQuestions(topic, userId, numQuestions);
-            return res.json(mockQuestions);
-        }
+        const allTopicQuestions = contentDB.questions[topic] || [];
         
-        // This part would format the questions from the DB if they existed.
-        const formattedQuestions = questionsFromDb.map(q => ({
-            id: q.question_id,
-            question: q.question_text,
-            explanation: q.explanation,
-            eli5: q.eli5_explanation,
-            answer: q.options.find(opt => opt.is_correct).option_text,
-            options: q.options.map(opt => opt.option_text).sort(() => Math.random() - 0.5)
-        }));
+        // Shuffle and slice to get a random assortment of the requested length
+        const shuffled = allTopicQuestions.sort(() => 0.5 - Math.random());
+        const selectedQuestions = shuffled.slice(0, numQuestions);
 
-        res.json(formattedQuestions);
+        res.json(selectedQuestions);
 
     } catch (error) {
         console.error('Error generating quiz:', error);
         res.status(500).json({ message: 'Internal server error.' });
     }
 });
-
-// Helper function to get mock questions (as our DB is empty)
-async function getMockQuestions(topic, userId, numQuestions) {
-    // This function simulates the logic that would exist in a real app
-    // to generate questions when the database is not yet populated.
-    const allQuestions = {
-        'Motivational Interviewing': [
-            { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", difficulty: 'easy', explanation: "Expressing empathy involves seeing the world from the client's perspective and communicating that understanding. It's foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels, like saying 'that sounds really tough' instead of just telling them what to do." },
-            { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", difficulty: 'medium', explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it,' acknowledging the client's perspective without judgment to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.' You don't push back." },
-            { id: 3, question: "Change talk is elicited from the...", options: ["Coach", "Client"], answer: "Client", difficulty: 'easy', explanation: "The coach's job is to evoke and strengthen the client's own arguments for change. People are more persuaded by the reasons they discover themselves.", eli5: "You help the person say why *they* want to change, instead of you telling them why they should." },
-        ],
-        'SMART Goals': [
-            { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", difficulty: 'easy', explanation: "A specific goal has a much greater chance of being accomplished than a general goal. It answers the questions: Who? What? Where? When? Why?", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do, like 'eat one apple every day.'" },
-        ]
-    };
-    const topicQuestions = allQuestions[topic] || [];
-    return topicQuestions.slice(0, numQuestions);
-}
 
 
 // --- 6. START THE SERVER ---
