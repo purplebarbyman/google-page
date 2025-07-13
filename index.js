@@ -31,6 +31,8 @@ const pool = new Pool({
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
 
 // --- MOCK DATABASE (for content, as DB is not populated yet) ---
+// In a real application, this data would be in your PostgreSQL database.
+// We are expanding this section significantly to simulate a robust content library.
 const contentDB = {
     topics: [
         { id: 1, name: 'Coaching Structure' },
@@ -40,6 +42,9 @@ const contentDB = {
         { id: 5, name: 'Motivational Interviewing' },
         { id: 6, name: 'SMART Goals' },
         { id: 7, name: 'HIPAA Basics' },
+        { id: 8, name: 'Positive Psychology' },
+        { id: 9, name: 'Sleep Science' },
+        { id: 10, name: 'Nutrition Basics' },
     ],
     questions: {
         'Motivational Interviewing': [
@@ -50,6 +55,9 @@ const contentDB = {
             { id: 12, question: "OARS stands for Open questions, Affirmations, Reflections, and...?", options: ["Summaries", "Solutions"], answer: "Summaries", explanation: "OARS is a set of fundamental communication skills in MI.", eli5: "OARS are the basic tools for a good coaching chat." },
             { id: 15, question: "Which is an example of an Affirmation?", options: ["'You're so dedicated for coming today.'", "'Good job.'"], answer: "'You're so dedicated for coming today.'", explanation: "Affirmations should be specific and genuine, recognizing the client's strengths and efforts.", eli5: "It's like giving a specific compliment, not just a general one." },
             { id: 16, question: "A 'complex reflection' goes beyond what is stated and infers...", options: ["Meaning or feeling", "The next logical step"], answer: "Meaning or feeling", explanation: "A complex reflection adds meaning or reflects an unstated feeling, which can lead to deeper insights for the client.", eli5: "It's like guessing the 'why' behind what someone said." },
+            { id: 18, question: "Developing discrepancy is about highlighting the gap between a client's current behavior and their...", options: ["Coach's expectations", "Core values and goals"], answer: "Core values and goals", explanation: "Motivation for change is enhanced when clients perceive a mismatch between where they are and where they want to be.", eli5: "It's showing the difference between what you're doing and what you say you want." },
+            { id: 19, question: "Which question is most likely to elicit change talk?", options: ["'Why haven't you exercised?'", "'What are some of the good things about exercising?'"], answer: "'What are some of the good things about exercising?'", explanation: "Asking about the benefits of change (the pros) is a key strategy to evoke change talk.", eli5: "Asking about the good parts of changing makes people talk about why they should." },
+            { id: 20, question: "The 'spirit' of MI is best described as:", options: ["Directive and authoritative", "Collaborative and evocative"], answer: "Collaborative and evocative", explanation: "MI is a partnership that honors the client's autonomy and is designed to draw out their own motivation and resources for change.", eli5: "It's about working together, not being a boss." },
         ],
         'SMART Goals': [
             { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", explanation: "A specific goal has a much greater chance of being accomplished than a general goal.", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do." },
@@ -58,12 +66,16 @@ const contentDB = {
             { id: 13, question: "'A' in SMART?", options: ["Achievable", "Ambitious"], answer: "Achievable", explanation: "The goal should be realistic and attainable for the individual.", eli5: "It means it's something you can actually do." },
             { id: 14, question: "'R' in SMART?", options: ["Relevant", "Realistic"], answer: "Relevant", explanation: "The goal matters to the individual and aligns with their broader objectives.", eli5: "It means the goal is important to you." },
             { id: 17, question: "Which is the BEST example of a SMART goal?", options: ["'I will lose weight by next month.'", "'I will lose 5 pounds in 6 weeks by replacing soda with water and walking 4 times a week.'"], answer: "'I will lose 5 pounds in 6 weeks by replacing soda with water and walking 4 times a week.'", explanation: "This goal is Specific, Measurable, Achievable, Relevant, and Time-bound.", eli5: "This one has all the right pieces: what, how much, how, and by when." },
+            { id: 21, question: "A goal of 'being happier' is not SMART because it is not...", options: ["Achievable", "Specific and Measurable"], answer: "Specific and Measurable", explanation: "'Happier' is subjective and not easily measured. A better goal would define what actions lead to happiness.", eli5: "You can't really measure 'happier' with a number." },
+            { id: 22, question: "Setting a goal to 'run a marathon next week' when you don't currently run likely violates which SMART principle?", options: ["Relevant", "Achievable"], answer: "Achievable", explanation: "While ambitious, a goal must be realistic. Setting an unachievable goal leads to discouragement.", eli5: "It's probably not possible to go from zero to marathon in one week." },
         ],
         'HIPAA Basics': [
             { id: 8, question: "What does HIPAA stand for?", options: ["Health Info Portability & Accountability Act", "Health Insurance Privacy & Access Act"], answer: "Health Info Portability & Accountability Act", explanation: "HIPAA is a federal law that protects sensitive patient health information.", eli5: "It's the law that says doctors must keep your health info private." },
             { id: 9, question: "Which is considered PHI?", options: ["A client's name", "Public data"], answer: "A client's name", explanation: "Any information that can be used to identify an individual and relates to their health is PHI.", eli5: "If it's about your health and has your name on it, it's private." },
             { id: 10, question: "Can a coach share client info without consent?", options: ["Yes, if it helps the client", "No, not without explicit consent"], answer: "No, not without explicit consent", explanation: "Sharing PHI without written authorization is a violation of HIPAA.", eli5: "You can't tell anyone about a client's health stuff unless they say it's okay in writing." },
             { id: 11, question: "A 'business associate' under HIPAA must also...?", options: ["Protect PHI", "Ignore PHI"], answer: "Protect PHI", explanation: "Business associates are also directly liable under HIPAA and must protect any PHI they handle.", eli5: "If a company helps a doctor, that company also has to keep patient info safe." },
+            { id: 23, question: "The 'Privacy Rule' of HIPAA primarily governs:", options: ["Data security standards", "The use and disclosure of PHI"], answer: "The use and disclosure of PHI", explanation: "The Privacy Rule sets the standards for who may have access to PHI.", eli5: "It's the part of the law about who is allowed to see your health information." },
+            { id: 24, question: "The 'Security Rule' of HIPAA applies specifically to:", options: ["All PHI, paper or electronic", "Electronic PHI (ePHI) only"], answer: "Electronic PHI (ePHI) only", explanation: "The Security Rule deals with the technical and physical safeguards for health information in electronic form.", eli5: "This rule is all about protecting health info that's on a computer." },
         ]
     },
     flashcards: {
@@ -73,6 +85,7 @@ const contentDB = {
             { id: 3, term: 'Rolling with Resistance', definition: 'A strategy of not directly opposing client resistance but rather flowing with it.' },
             { id: 11, term: 'OARS', definition: 'A set of core communication skills: Open questions, Affirmations, Reflections, and Summaries.' },
             { id: 12, term: 'Sustain Talk', definition: 'The client\'s own arguments for not changing, for maintaining the status quo.' },
+            { id: 13, term: 'Developing Discrepancy', definition: 'Helping a client see the gap between their current behavior and their deeper goals and values.' },
         ],
         'smart': [
             { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous, answering who, what, where, and why.' },
@@ -85,6 +98,7 @@ const contentDB = {
             { id: 9, term: 'Confidentiality', definition: 'The ethical duty to keep client information private.' },
             { id: 10, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake in keeping with the terms of their professional license or certification.' },
             { id: 13, term: 'Dual Relationship', definition: 'When a coach has a second, significantly different relationship with their client in addition to the coaching relationship.' },
+            { id: 14, term: 'Informed Consent', definition: 'The process of ensuring a client understands the nature of the coaching relationship, including risks, benefits, and logistics, before it begins.' },
         ]
     }
 };
@@ -196,7 +210,7 @@ app.get('/api/user/data', authenticateToken, async (req, res) => {
 app.post('/api/quizzes', authenticateToken, async (req, res) => {
     try {
         const { topic, duration } = req.body;
-        const numQuestions = Math.max(1, Math.floor(duration / 1.5));
+        const numQuestions = Math.max(3, Math.floor(duration / 1.5));
         
         const allTopicQuestions = contentDB.questions[topic] || [];
         const shuffled = allTopicQuestions.sort(() => 0.5 - Math.random());
@@ -209,6 +223,7 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Internal server error.' });
     }
 });
+
 
 // --- 6. START THE SERVER ---
 app.listen(port, () => {
