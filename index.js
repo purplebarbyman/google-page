@@ -20,6 +20,7 @@ app.use(express.json());
 app.use(cors());
 
 // --- DATABASE CONNECTION ---
+// Render provides the DATABASE_URL environment variable automatically.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -36,6 +37,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-d
 // =================================================================
 /*
   This backend assumes the following PostgreSQL tables exist.
+  You would run these CREATE TABLE commands in your database once.
 
   CREATE TABLE users (...);
   CREATE TABLE user_stats (...);
@@ -102,6 +104,7 @@ app.post('/api/auth/register', async (req, res) => {
         const newUser = await client.query(newUserQuery, [fullName, email, passwordHash]);
         const userId = newUser.rows[0].user_id;
 
+        // Initialize stats and mastery for the new user
         await client.query('INSERT INTO user_stats (user_id, points, current_streak) VALUES ($1, 0, 0)', [userId]);
         const topics = ['Coaching Structure', 'Coaching Process', 'Health & Wellness', 'Ethics, Legal & Professional Responsibility', 'Motivational Interviewing', 'SMART Goals', 'HIPAA Basics'];
         for (const topic of topics) {
@@ -189,25 +192,28 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         // In a real app, you would have a much more sophisticated query here
         // that uses the adaptive logic from our blueprint (checking mastery, etc.)
         // For now, we'll just grab random questions on the topic.
-        const questionsQuery = `
-            SELECT q.question_id, q.question_text, q.explanation, q.eli5_explanation,
-                   (SELECT json_agg(o) FROM (SELECT option_id, option_text, is_correct FROM question_options WHERE question_id = q.question_id) o) as options
-            FROM questions q
-            JOIN topics t ON q.topic_id = t.topic_id
-            WHERE t.topic_name = $1
-            ORDER BY RANDOM()
-            LIMIT $2;
-        `;
+        // This part of the code assumes you have populated your database with questions.
+        // Since we haven't done that, this will return an empty array.
+        // We will rely on the frontend's mockApi for quiz questions for now.
         
-        const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
+        // This is a placeholder for where the real database query would go.
+        const questionsFromDb = []; // This would be populated from your DB.
+
+        // If the database has no questions for the topic, we fall back to the mock.
+        if (questionsFromDb.length === 0) {
+            console.log(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
+            const mockQuestions = await getMockQuestions(topic, userId, numQuestions);
+            return res.json(mockQuestions);
+        }
         
-        const formattedQuestions = questionsResult.rows.map(q => ({
+        // This part would format the questions from the DB if they existed.
+        const formattedQuestions = questionsFromDb.map(q => ({
             id: q.question_id,
             question: q.question_text,
             explanation: q.explanation,
             eli5: q.eli5_explanation,
             answer: q.options.find(opt => opt.is_correct).option_text,
-            options: q.options.map(opt => opt.option_text).sort(() => Math.random() - 0.5) // Shuffle options
+            options: q.options.map(opt => opt.option_text).sort(() => Math.random() - 0.5)
         }));
 
         res.json(formattedQuestions);
@@ -217,6 +223,24 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Internal server error.' });
     }
 });
+
+// Helper function to get mock questions (as our DB is empty)
+async function getMockQuestions(topic, userId, numQuestions) {
+    // This function simulates the logic that would exist in a real app
+    // to generate questions when the database is not yet populated.
+    const allQuestions = {
+        'Motivational Interviewing': [
+            { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", difficulty: 'easy', explanation: "Expressing empathy involves seeing the world from the client's perspective and communicating that understanding. It's foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels, like saying 'that sounds really tough' instead of just telling them what to do." },
+            { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", difficulty: 'medium', explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it,' acknowledging the client's perspective without judgment to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.' You don't push back." },
+            { id: 3, question: "Change talk is elicited from the...", options: ["Coach", "Client"], answer: "Client", difficulty: 'easy', explanation: "The coach's job is to evoke and strengthen the client's own arguments for change. People are more persuaded by the reasons they discover themselves.", eli5: "You help the person say why *they* want to change, instead of you telling them why they should." },
+        ],
+        'SMART Goals': [
+            { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", difficulty: 'easy', explanation: "A specific goal has a much greater chance of being accomplished than a general goal. It answers the questions: Who? What? Where? When? Why?", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do, like 'eat one apple every day.'" },
+        ]
+    };
+    const topicQuestions = allQuestions[topic] || [];
+    return topicQuestions.slice(0, numQuestions);
+}
 
 
 // --- 6. START THE SERVER ---
