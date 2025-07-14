@@ -22,7 +22,8 @@ const pool = new Pool({
   }
 });
 
-const csvFilePath = path.join(__dirname, 'questions.csv');
+// Use process.cwd() to ensure the path is relative to where the script is run
+const csvFilePath = path.join(process.cwd(), 'questions.csv');
 const questions = [];
 
 console.log('Starting to read CSV file...');
