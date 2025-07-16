@@ -1,13 +1,11 @@
 // =================================================================
-// NBHWC PLATFORM - CSV IMPORTER SCRIPT (Corrected)
+// NBHWC PLATFORM - CSV IMPORTER SCRIPT (Final Corrected Version)
 // =================================================================
 // This is a one-time use script to read questions from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version uses a direct connection string to avoid .env issues.
+// This version removes all other dependencies and uses only a direct
+// connection string to guarantee the correct connection.
 // =================================================================
-
-// Load environment variables from .env file immediately. This MUST be the first line.
-require('dotenv').config(); 
 
 const fs = require('fs');
 const path = require('path');
@@ -18,8 +16,8 @@ const { Pool } = require('pg');
 // PASTE YOUR FULL EXTERNAL DATABASE URL FROM RENDER INSIDE THE QUOTES.
 const connectionString = "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database"; 
 
-if (connectionString === "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database" || !connectionString) {
-    console.error("ERROR: Please replace 'postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database' in the import-questions.js file with your actual database URL from Render.");
+if (connectionString === "YOUR_DATABASE_URL_HERE" || !connectionString) {
+    console.error("ERROR: Please replace 'YOUR_DATABASE_URL_HERE' in the import-questions.js file with your actual database URL from Render.");
     process.exit(1);
 }
 
