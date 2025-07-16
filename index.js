@@ -3,7 +3,7 @@
 // =================================================================
 // This is the production-ready backend. It reads all content,
 // including quizzes and user data, directly from the PostgreSQL
-// database. This version includes more robust error handling.
+// database. This version includes a corrected fallback to mock data.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
