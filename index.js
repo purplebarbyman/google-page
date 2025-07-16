@@ -3,8 +3,7 @@
 // =================================================================
 // This is the production-ready backend. It reads all content,
 // including quizzes and user data, directly from the PostgreSQL
-// database. It now includes a fallback to mock data if the
-// database is not yet populated with content.
+// database. This version includes more robust error handling.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -200,14 +199,22 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
         
         if (questionsResult.rows.length > 0) {
-            const formattedQuestions = questionsResult.rows.map(q => ({
-                id: q.question_id,
-                question: q.question_text,
-                explanation: q.explanation,
-                eli5: q.eli5_explanation,
-                answer: q.options.find(opt => opt.is_correct).option_text,
-                options: q.options.map(opt => opt.option_text)
-            }));
+            const formattedQuestions = questionsResult.rows.map(q => {
+                const correctAnswer = q.options.find(opt => opt.is_correct);
+                if (!correctAnswer) {
+                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
+                    return null; // Skip this question if it's malformed
+                }
+                return {
+                    id: q.question_id,
+                    question: q.question_text,
+                    explanation: q.explanation,
+                    eli5: q.eli5_explanation,
+                    answer: correctAnswer.option_text,
+                    options: q.options.map(opt => opt.option_text)
+                };
+            }).filter(Boolean); // Remove any null questions
+            
             return res.json(formattedQuestions);
         }
         
