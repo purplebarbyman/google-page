@@ -3,12 +3,8 @@
 // =================================================================
 // This is a one-time use script to read questions from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version corrects the load order for environment variables and
-// ensures the script waits for async operations to complete.
+// This version uses a direct connection string to avoid .env issues.
 // =================================================================
-
-// Load environment variables from .env file immediately. This MUST be the first line.
-require('dotenv').config(); 
 
 const fs = require('fs');
 const path = require('path');
@@ -16,9 +12,16 @@ const csv = require('csv-parser');
 const { Pool } = require('pg');
 
 // --- DATABASE CONNECTION ---
-// Now that dotenv has run, process.env.DATABASE_URL will be correctly populated.
+// PASTE YOUR FULL EXTERNAL DATABASE URL FROM RENDER INSIDE THE QUOTES.
+const connectionString = "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database"; 
+
+if (connectionString === "Ypostgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database") {
+    console.error("ERROR: Please replace 'postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database' in the import-questions.js file with your actual database URL from Render.");
+    process.exit(1);
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: connectionString,
   ssl: {
     rejectUnauthorized: false
   }
