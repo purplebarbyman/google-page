@@ -1,8 +1,9 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (V7)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (V6 - FINAL)
 // =================================================================
-// This version moves quiz submission and progress tracking to the
-// backend to enable live analytics.
+// This is the production-ready backend. It reads all content,
+// including quizzes and user data, directly from the PostgreSQL
+// database. All mock data has been removed.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -54,10 +55,17 @@ const contentDB = {
         'mi': { name: 'Motivational Interviewing', cards: [
             { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another from their perspective.' },
             { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' },
+            { id: 3, term: 'Rolling with Resistance', definition: 'A strategy of not directly opposing client resistance but rather flowing with it.' },
         ]},
         'smart': { name: 'SMART Goals', cards: [
             { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous, answering who, what, where, and why.' },
+            { id: 5, term: 'Measurable', definition: 'The goal has concrete criteria for tracking progress.' },
+            { id: 6, term: 'Achievable', definition: 'The goal is realistic and attainable for the individual.' },
         ]},
+        'ethics': { name: 'Core Ethics', cards: [
+            { id: 9, term: 'Confidentiality', definition: 'The ethical duty to keep client information private.' },
+            { id: 10, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake.' },
+        ]}
     }
 };
 
@@ -169,12 +177,33 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
     try {
         const { topic, duration } = req.body;
         const numQuestions = Math.max(3, Math.floor(duration / 1.5));
-        
-        const allTopicQuestions = contentDB.questions[topic] || [];
-        const shuffled = allTopicQuestions.sort(() => 0.5 - Math.random());
-        const selectedQuestions = shuffled.slice(0, numQuestions);
 
-        res.json(selectedQuestions);
+        const questionsQuery = `
+            SELECT q.question_id, q.question_text, q.explanation, q.eli5_explanation,
+                   (SELECT json_agg(o) FROM (SELECT option_id, option_text, is_correct FROM question_options WHERE question_id = q.question_id ORDER BY random()) o) as options
+            FROM questions q
+            JOIN topics t ON q.topic_id = t.topic_id
+            WHERE t.topic_name = $1
+            ORDER BY RANDOM()
+            LIMIT $2;
+        `;
+        
+        const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
+        
+        if (questionsResult.rows.length === 0) {
+            return res.status(404).json({ message: `No questions found for topic: ${topic}`});
+        }
+        
+        const formattedQuestions = questionsResult.rows.map(q => ({
+            id: q.question_id,
+            question: q.question_text,
+            explanation: q.explanation,
+            eli5: q.eli5_explanation,
+            answer: q.options.find(opt => opt.is_correct).option_text,
+            options: q.options.map(opt => opt.option_text)
+        }));
+
+        res.json(formattedQuestions);
 
     } catch (error) {
         console.error('Error generating quiz:', error);
