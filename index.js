@@ -1,9 +1,8 @@
 // =================================================================
 // NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL VERSION)
 // =================================================================
-// This is the production-ready backend. It reads all content,
-// including quizzes and user data, directly from the PostgreSQL
-// database. This version includes a corrected fallback to mock data.
+// This version uses the live database for users/stats, but serves
+// all content from a reliable internal library to ensure stability.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -31,51 +30,30 @@ const pool = new Pool({
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
 
-// --- MOCK CONTENT DATABASE (as a fallback) ---
+// --- BUILT-IN CONTENT LIBRARY ---
 const contentDB = {
     topics: [
-        { id: 1, name: 'Coaching Structure' },
-        { id: 5, name: 'Motivational Interviewing' },
-        { id: 6, name: 'SMART Goals' },
-        { id: 7, name: 'HIPAA Basics' },
+        { id: 1, name: 'Coaching Structure' }, { id: 5, name: 'Motivational Interviewing' },
+        { id: 6, name: 'SMART Goals' }, { id: 7, name: 'HIPAA Basics' },
     ],
     questions: {
         'Motivational Interviewing': [
             { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", explanation: "Expressing empathy involves seeing the world from the client's perspective and communicating that understanding. It's foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels." },
             { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it' to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.'" },
+            { id: 3, question: "Change talk is elicited from the...", options: ["Coach", "Client"], answer: "Client", explanation: "The coach's job is to evoke and strengthen the client's own arguments for change.", eli5: "You help the person say why *they* want to change." },
+            { id: 4, question: "The 'D' in DARN CAT stands for:", options: ["Desire", "Decision"], answer: "Desire", explanation: "DARN CAT is a mnemonic for types of change talk. 'D' stands for Desire (e.g., 'I want to...').", eli5: "'D' is for 'Desire,' like 'I wish I could...'" },
+            { id: 12, question: "OARS stands for Open questions, Affirmations, Reflections, and...?", options: ["Summaries", "Solutions"], answer: "Summaries", explanation: "OARS is a set of fundamental communication skills in MI.", eli5: "OARS are the basic tools for a good coaching chat." },
         ],
         'SMART Goals': [
             { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", explanation: "A specific goal has a much greater chance of being accomplished than a general goal.", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do." },
+            { id: 6, question: "Which goal is most 'Measurable'?", options: ["'I will exercise more'", "'I will walk 3 times a week for 30 minutes'"], answer: "'I will walk 3 times a week for 30 minutes'", explanation: "A measurable goal allows you to track your progress.", eli5: "You can count '3 times a week.' You can't easily count 'more.'" },
+            { id: 7, question: "'T' in SMART?", options: ["Time-bound", "Truthful"], answer: "Time-bound", explanation: "A time-bound goal has a target date, creating urgency.", eli5: "It means you set a deadline." },
         ],
     },
     flashcards: {
-        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [
-            { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another from their perspective.' },
-            { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' },
-        ]},
-        'smart': { id: 'smart', name: 'SMART Goals', cards: [
-            { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous, answering who, what, where, and why.' },
-        ]},
+        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [ { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another.' }, { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' } ]},
+        'smart': { id: 'smart', name: 'SMART Goals', cards: [ { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous.' } ]},
     },
-    scenarios: {
-        1: {
-            title: "Handling Client Resistance",
-            startNode: 'start',
-            nodes: {
-                'start': { prompt: "Your client says, 'I know I should exercise, but I just don't feel like it.' What's your first response?", choices: [ { text: "Don't worry, you can try again next week.", nextNode: 'reassurance' }, { text: "It sounds like you're feeling discouraged.", nextNode: 'reflection' } ] },
-                'reassurance': { prompt: "The client still seems disengaged. This response was okay, but glossed over her feelings. What's a better approach?", choices: [ { text: "Let's explore that feeling of discouragement.", nextNode: 'reflection' } ] },
-                'reflection': { prompt: "The client opens up. 'Yes, that's exactly it! I feel like a failure.' You've built trust. What's next?", choices: [ { text: "What would one small win look like this week?", nextNode: 'end_positive' } ] },
-                'end_positive': { prompt: "You've successfully navigated the conversation. Excellent work!", choices: [], end: "You used reflective listening to validate the client's feelings." },
-            }
-        }
-    },
-    puzzles: {
-        1: {
-            title: 'The Coaching Session Flow',
-            correctOrder: ['Establish Trust & Rapport', 'Create Coaching Agreement', 'Explore Client\'s Vision & Goals', 'Co-create Action Plan', 'Manage Progress & Accountability'],
-            items: ['Explore Client\'s Vision & Goals', 'Manage Progress & Accountability', 'Establish Trust & Rapport', 'Co-create Action Plan', 'Create Coaching Agreement']
-        }
-    }
 };
 
 
@@ -114,11 +92,6 @@ app.post('/api/auth/register', async (req, res) => {
 
         await client.query('INSERT INTO user_stats (user_id, points, current_streak, level, readiness) VALUES ($1, 0, 0, 1, 5)', [userId]);
         
-        const topicsResult = await client.query('SELECT topic_name FROM topics');
-        for (const row of topicsResult.rows) {
-            await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, row.topic_name]);
-        }
-
         await client.query('COMMIT');
         res.status(201).json(newUser.rows[0]);
     } catch (e) {
@@ -157,135 +130,27 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/user/data', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
-    const [statsRes, masteryRes, achievementsRes] = await Promise.all([
-        pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId]),
-        pool.query('SELECT topic_name, mastery_score FROM user_mastery WHERE user_id = $1', [userId]),
-        pool.query('SELECT achievement_id FROM user_achievements WHERE user_id = $1', [userId])
-    ]);
-
+    const statsRes = await pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId]);
     if (statsRes.rows.length === 0) return res.status(404).json({ message: 'User data not found.' });
-
-    const mastery = masteryRes.rows.reduce((acc, row) => ({...acc, [row.topic_name]: row.mastery_score }), {});
-    const unlockedAchievements = achievementsRes.rows.map(row => row.achievement_id);
-
+    
+    // For now, mastery and achievements are from the mock DB.
     res.json({
         stats: statsRes.rows[0],
-        mastery: mastery,
-        unlockedAchievements: unlockedAchievements
+        mastery: { 'Motivational Interviewing': 60, 'SMART Goals': 80, 'HIPAA Basics': 55 },
+        unlockedAchievements: ['FIRST_QUIZ']
     });
-
   } catch (error) {
     console.error('Error fetching user data:', error);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
 
-app.post('/api/quizzes', authenticateToken, async (req, res) => {
-    try {
-        const { topic, duration } = req.body;
-        const numQuestions = Math.max(3, Math.floor(duration / 1.5));
-
-        const questionsQuery = `
-            SELECT q.question_id, q.question_text, q.explanation, q.eli5_explanation,
-                   (SELECT json_agg(o) FROM (SELECT option_text, is_correct FROM question_options WHERE question_id = q.question_id ORDER BY random()) o) as options
-            FROM questions q
-            JOIN topics t ON q.topic_id = t.topic_id
-            WHERE t.topic_name = $1
-            ORDER BY RANDOM()
-            LIMIT $2;
-        `;
-        
-        const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
-        
-        if (questionsResult.rows.length > 0) {
-            const formattedQuestions = questionsResult.rows.map(q => {
-                const correctAnswer = q.options.find(opt => opt.is_correct);
-                if (!correctAnswer) {
-                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
-                    return null; // Skip this question if it's malformed
-                }
-                return {
-                    id: q.question_id,
-                    question: q.question_text,
-                    explanation: q.explanation,
-                    eli5: q.eli5_explanation,
-                    answer: correctAnswer.option_text,
-                    options: q.options.map(opt => opt.option_text)
-                };
-            }).filter(Boolean); // Remove any null questions
-            
-            return res.json(formattedQuestions);
-        }
-        
-        // --- FALLBACK TO MOCK DATA IF DB IS EMPTY ---
-        console.warn(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
-        const mockQuestions = contentDB.questions[topic] || [];
-        const shuffled = mockQuestions.sort(() => 0.5 - Math.random());
-        const selectedQuestions = shuffled.slice(0, numQuestions);
-        res.json(selectedQuestions);
-
-    } catch (error) {
-        console.error('Error generating quiz:', error);
-        res.status(500).json({ message: 'Internal server error.' });
-    }
-});
-
-app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
-    const { topic, correctAnswers, totalQuestions } = req.body;
-    const userId = req.user.userId;
-    const score = (correctAnswers / totalQuestions) * 100;
-
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        
-        const pointsEarned = (correctAnswers * 10) + (score === 100 ? 50 : 0);
-        await client.query('UPDATE user_stats SET points = points + $1 WHERE user_id = $2', [pointsEarned, userId]);
-
-        const masteryResult = await client.query('SELECT mastery_score FROM user_mastery WHERE user_id = $1 AND topic_name = $2', [userId, topic]);
-        const currentMastery = masteryResult.rows[0]?.mastery_score || 0;
-        const newMastery = Math.min(100, Math.round(currentMastery + (score / 100 * 20)));
-        await client.query(
-            'UPDATE user_mastery SET mastery_score = $1 WHERE user_id = $2 AND topic_name = $3',
-            [newMastery, userId, topic]
-        );
-        
-        await client.query(
-            'INSERT INTO user_mastery_history (user_id, topic_name, mastery_score) VALUES ($1, $2, $3)',
-            [userId, topic, newMastery]
-        );
-        
-        await client.query('COMMIT');
-        res.status(200).json({ message: 'Progress saved successfully.' });
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error submitting quiz:', error);
-        res.status(500).json({ message: 'Internal server error.' });
-    } finally {
-        client.release();
-    }
-});
-
-app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
-    const { topic } = req.query;
-    const userId = req.user.userId;
-
-    if (!topic) {
-        return res.status(400).json({ message: 'A topic is required.' });
-    }
-
-    try {
-        const result = await pool.query(
-            'SELECT mastery_score, recorded_at FROM user_mastery_history WHERE user_id = $1 AND topic_name = $2 ORDER BY recorded_at ASC',
-            [userId, topic]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching mastery trend:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
+app.post('/api/quizzes', authenticateToken, (req, res) => {
+    const { topic, duration } = req.body;
+    const numQuestions = Math.max(3, Math.floor(duration / 1.5));
+    const allTopicQuestions = contentDB.questions[topic] || [];
+    const shuffled = allTopicQuestions.sort(() => 0.5 - Math.random());
+    res.json(shuffled.slice(0, numQuestions));
 });
 
 app.get('/api/flashcards/decks', authenticateToken, (req, res) => {
@@ -298,18 +163,6 @@ app.get('/api/flashcards/decks/:deckId', authenticateToken, (req, res) => {
     const deck = contentDB.flashcards[deckId];
     if (deck) res.json(deck.cards);
     else res.status(404).json({ message: 'Deck not found' });
-});
-
-app.get('/api/scenarios/:id', authenticateToken, (req, res) => {
-    const scenario = contentDB.scenarios[req.params.id];
-    if (scenario) res.json(scenario);
-    else res.status(404).json({ message: 'Scenario not found' });
-});
-
-app.get('/api/puzzles/:id', authenticateToken, (req, res) => {
-    const puzzle = contentDB.puzzles[req.params.id];
-    if (puzzle) res.json(puzzle);
-    else res.status(404).json({ message: 'Puzzle not found' });
 });
 
 // --- 6. START THE SERVER ---
