@@ -1,8 +1,8 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (V6)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (V7)
 // =================================================================
-// This version adds live API endpoints for serving flashcard content,
-// moving it from the frontend mock to the backend.
+// This version moves quiz submission and progress tracking to the
+// backend to enable live analytics.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -54,17 +54,10 @@ const contentDB = {
         'mi': { name: 'Motivational Interviewing', cards: [
             { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another from their perspective.' },
             { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' },
-            { id: 3, term: 'Rolling with Resistance', definition: 'A strategy of not directly opposing client resistance but rather flowing with it.' },
         ]},
         'smart': { name: 'SMART Goals', cards: [
             { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous, answering who, what, where, and why.' },
-            { id: 5, term: 'Measurable', definition: 'The goal has concrete criteria for tracking progress.' },
-            { id: 6, term: 'Achievable', definition: 'The goal is realistic and attainable for the individual.' },
         ]},
-        'ethics': { name: 'Core Ethics', cards: [
-            { id: 9, term: 'Confidentiality', definition: 'The ethical duty to keep client information private.' },
-            { id: 10, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake.' },
-        ]}
     }
 };
 
@@ -189,22 +182,68 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
     }
 });
 
-// --- NEW FLASHCARD ROUTES ---
-app.get('/api/flashcards/decks', authenticateToken, (req, res) => {
-    const decks = Object.keys(contentDB.flashcards).map(id => ({
-        id: id,
-        name: contentDB.flashcards[id].name
-    }));
-    res.json(decks);
+// --- NEW QUIZ SUBMISSION ROUTE ---
+app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
+    const { topic, correctAnswers, totalQuestions } = req.body;
+    const userId = req.user.userId;
+    const score = (correctAnswers / totalQuestions) * 100;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Update points
+        const pointsEarned = (correctAnswers * 10) + (score === 100 ? 50 : 0);
+        await client.query('UPDATE user_stats SET points = points + $1 WHERE user_id = $2', [pointsEarned, userId]);
+
+        // 2. Update mastery
+        const masteryResult = await client.query('SELECT mastery_score FROM user_mastery WHERE user_id = $1 AND topic_name = $2', [userId, topic]);
+        const currentMastery = masteryResult.rows[0]?.mastery_score || 0;
+        const newMastery = Math.min(100, Math.round(currentMastery + (score / 100 * 20))); // Increased impact
+        await client.query(
+            'UPDATE user_mastery SET mastery_score = $1 WHERE user_id = $2 AND topic_name = $3',
+            [newMastery, userId, topic]
+        );
+        
+        // 3. Log mastery history for analytics
+        await client.query(
+            'INSERT INTO user_mastery_history (user_id, topic_name, mastery_score) VALUES ($1, $2, $3)',
+            [userId, topic, newMastery]
+        );
+
+        // 4. Check for new achievements (simplified for now)
+        // In a real app, this would be more robust
+        
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'Progress saved successfully.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error submitting quiz:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    } finally {
+        client.release();
+    }
 });
 
-app.get('/api/flashcards/decks/:deckId', authenticateToken, (req, res) => {
-    const { deckId } = req.params;
-    const deck = contentDB.flashcards[deckId];
-    if (deck) {
-        res.json(deck.cards);
-    } else {
-        res.status(404).json({ message: 'Deck not found' });
+// --- NEW ANALYTICS ROUTE ---
+app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
+    const { topic } = req.query;
+    const userId = req.user.userId;
+
+    if (!topic) {
+        return res.status(400).json({ message: 'A topic is required.' });
+    }
+
+    try {
+        const result = await pool.query(
+            'SELECT mastery_score, recorded_at FROM user_mastery_history WHERE user_id = $1 AND topic_name = $2 ORDER BY recorded_at ASC',
+            [userId, topic]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching mastery trend:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
