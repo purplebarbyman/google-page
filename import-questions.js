@@ -1,20 +1,21 @@
 // =================================================================
-// NBHWC PLATFORM - CSV IMPORTER SCRIPT
+// NBHWC PLATFORM - CSV IMPORTER SCRIPT (Corrected)
 // =================================================================
 // This is a one-time use script to read questions from a CSV file
 // and insert them into your live PostgreSQL database on Render.
+// This version corrects the load order for environment variables.
 // =================================================================
+
+// Load environment variables from .env file immediately. This MUST be the first line.
+require('dotenv').config(); 
 
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
 const { Pool } = require('pg');
-require('dotenv').config(); // To load environment variables from a .env file
 
 // --- DATABASE CONNECTION ---
-// It's best practice to use a .env file for sensitive credentials.
-// Create a file named .env in your project folder and add your DATABASE_URL to it.
-// DATABASE_URL="postgresql://user:password@host/database"
+// Now that dotenv has run, process.env.DATABASE_URL will be correctly populated.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -22,7 +23,6 @@ const pool = new Pool({
   }
 });
 
-// Use process.cwd() to ensure the path is relative to where the script is run
 const csvFilePath = path.join(process.cwd(), 'questions.csv');
 const questions = [];
 
