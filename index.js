@@ -31,7 +31,7 @@ const pool = new Pool({
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
 
-// --- MOCK CONTENT DATABASE (as a fallback) ---
+// --- BUILT-IN CONTENT LIBRARY ---
 const contentDB = {
     topics: [
         { id: 1, name: 'Coaching Structure' },
@@ -176,48 +176,15 @@ app.get('/api/user/data', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/quizzes', authenticateToken, async (req, res) => {
+app.post('/api/quizzes', authenticateToken, (req, res) => {
     try {
         const { topic, duration } = req.body;
         const numQuestions = Math.max(3, Math.floor(duration / 1.5));
-
-        const questionsQuery = `
-            SELECT q.question_id, q.question_text, q.explanation, q.eli5_explanation,
-                   (SELECT json_agg(o) FROM (SELECT option_text, is_correct FROM question_options WHERE question_id = q.question_id ORDER BY random()) o) as options
-            FROM questions q
-            JOIN topics t ON q.topic_id = t.topic_id
-            WHERE t.topic_name = $1
-            ORDER BY RANDOM()
-            LIMIT $2;
-        `;
         
-        const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
-        
-        if (questionsResult.rows.length > 0) {
-            const formattedQuestions = questionsResult.rows.map(q => {
-                const correctAnswer = q.options.find(opt => opt.is_correct);
-                if (!correctAnswer) {
-                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
-                    return null;
-                }
-                return {
-                    id: q.question_id,
-                    question: q.question_text,
-                    explanation: q.explanation,
-                    eli5: q.eli5_explanation,
-                    answer: correctAnswer.option_text,
-                    options: q.options.map(opt => opt.option_text)
-                };
-            }).filter(Boolean);
-            
-            return res.json(formattedQuestions);
-        }
-        
-        // --- FALLBACK TO MOCK DATA IF DB IS EMPTY ---
-        console.warn(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
-        const mockQuestions = contentDB.questions[topic] || [];
-        const shuffled = mockQuestions.sort(() => 0.5 - Math.random());
+        const allTopicQuestions = contentDB.questions[topic] || [];
+        const shuffled = allTopicQuestions.sort(() => 0.5 - Math.random());
         const selectedQuestions = shuffled.slice(0, numQuestions);
+
         res.json(selectedQuestions);
 
     } catch (error) {
