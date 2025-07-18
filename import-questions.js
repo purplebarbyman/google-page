@@ -3,7 +3,8 @@
 // =================================================================
 // This is a one-time use script to read questions from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version corrects the logical error in the connection string check.
+// This version now includes logic to create the necessary tables
+// if they do not already exist, making it a single-step process.
 // =================================================================
 
 const fs = require('fs');
@@ -15,7 +16,6 @@ const { Pool } = require('pg');
 // PASTE YOUR FULL EXTERNAL DATABASE URL FROM RENDER INSIDE THE QUOTES.
 const connectionString = "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database"; 
 
-// This check now correctly looks for the original placeholder text.
 if (connectionString === "YOUR_DATABASE_URL_HERE" || !connectionString) {
     console.error("ERROR: Please replace 'YOUR_DATABASE_URL_HERE' in the import-questions.js file with your actual database URL from Render.");
     process.exit(1);
@@ -29,6 +29,70 @@ const pool = new Pool({
 });
 
 const csvFilePath = path.join(process.cwd(), 'questions.csv');
+
+// --- SQL for creating tables ---
+const createTablesQuery = `
+  CREATE TABLE IF NOT EXISTS users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS user_stats (
+    user_id INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    points INT DEFAULT 0,
+    current_streak INT DEFAULT 0,
+    last_study_date DATE,
+    level INT DEFAULT 1,
+    readiness INT DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS topics (
+    topic_id SERIAL PRIMARY KEY,
+    topic_name VARCHAR(255) UNIQUE NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS questions (
+    question_id SERIAL PRIMARY KEY,
+    topic_id INT NOT NULL REFERENCES topics(topic_id),
+    question_text TEXT NOT NULL,
+    difficulty INT NOT NULL,
+    explanation TEXT,
+    eli5_explanation TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS question_options (
+    option_id SERIAL PRIMARY KEY,
+    question_id INT NOT NULL REFERENCES questions(question_id) ON DELETE CASCADE,
+    option_text VARCHAR(255) NOT NULL,
+    is_correct BOOLEAN NOT NULL DEFAULT false
+  );
+
+  CREATE TABLE IF NOT EXISTS user_mastery (
+    mastery_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    topic_name VARCHAR(255) NOT NULL,
+    mastery_score INT NOT NULL DEFAULT 0,
+    UNIQUE(user_id, topic_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_achievements (
+    achievement_id VARCHAR(50) NOT NULL,
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, achievement_id)
+  );
+  
+  CREATE TABLE IF NOT EXISTS user_mastery_history (
+    history_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    topic_name VARCHAR(255) NOT NULL,
+    mastery_score INT NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  );
+`;
 
 async function processCSV() {
   const questions = [];
@@ -50,7 +114,6 @@ async function processCSV() {
       questions.push(questionData);
     });
 
-  // Wait for the stream to finish reading the file
   await new Promise((resolve, reject) => {
     stream.on('end', resolve);
     stream.on('error', reject);
@@ -69,6 +132,10 @@ async function processCSV() {
 
   try {
     await client.query('BEGIN');
+    console.log('Ensuring database tables exist...');
+    await client.query(createTablesQuery);
+    console.log('Tables verified/created successfully.');
+    
     console.log('Starting database transaction...');
 
     console.log('Clearing existing questions...');
