@@ -3,8 +3,7 @@
 // =================================================================
 // This is a one-time use script to read questions from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version removes all other dependencies and uses only a direct
-// connection string to guarantee the correct connection.
+// This version corrects the logical error in the connection string check.
 // =================================================================
 
 const fs = require('fs');
@@ -16,8 +15,9 @@ const { Pool } = require('pg');
 // PASTE YOUR FULL EXTERNAL DATABASE URL FROM RENDER INSIDE THE QUOTES.
 const connectionString = "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database"; 
 
-if (connectionString === "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database" || !connectionString) {
-    console.error("ERROR: Please replace 'postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database' in the import-questions.js file with your actual database URL from Render.");
+// This check now correctly looks for the original placeholder text.
+if (connectionString === "YOUR_DATABASE_URL_HERE" || !connectionString) {
+    console.error("ERROR: Please replace 'YOUR_DATABASE_URL_HERE' in the import-questions.js file with your actual database URL from Render.");
     process.exit(1);
 }
 
