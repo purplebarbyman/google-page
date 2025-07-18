@@ -16,7 +16,7 @@ const { Pool } = require('pg');
 // PASTE YOUR FULL EXTERNAL DATABASE URL FROM RENDER INSIDE THE QUOTES.
 const connectionString = "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database"; 
 
-if (connectionString === "YOUR_DATABASE_URL_HERE" || !connectionString) {
+if (connectionString === "postgresql://nbhwc_database_user:hXvbl1bm6yIXXz68YERj2zaeo86NvIlE@dpg-d1ptic7fte5s73co1qsg-a.oregon-postgres.render.com/nbhwc_database" || !connectionString) {
     console.error("ERROR: Please replace 'YOUR_DATABASE_URL_HERE' in the import-questions.js file with your actual database URL from Render.");
     process.exit(1);
 }
