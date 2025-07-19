@@ -1,8 +1,8 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL VERSION)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (V7)
 // =================================================================
-// This version uses the live database for users/stats, but serves
-// all content from a reliable internal library to ensure stability.
+// This version moves quiz submission and progress tracking to the
+// backend to enable live analytics.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -29,49 +29,6 @@ const pool = new Pool({
 
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
-
-// --- BUILT-IN CONTENT LIBRARY ---
-const contentDB = {
-    topics: [
-        { id: 1, name: 'Coaching Structure' },
-        { id: 5, name: 'Motivational Interviewing' },
-        { id: 6, name: 'SMART Goals' },
-        { id: 7, name: 'HIPAA Basics' },
-    ],
-    questions: {
-        'Motivational Interviewing': [
-            { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", explanation: "Expressing empathy involves seeing the world from the client's perspective and communicating that understanding. It's foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels." },
-            { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it' to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.'" },
-        ],
-        'SMART Goals': [
-            { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", explanation: "A specific goal has a much greater chance of being accomplished than a general goal.", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do." },
-        ],
-    },
-    flashcards: {
-        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [ { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another.' }, { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' } ]},
-        'smart': { id: 'smart', name: 'SMART Goals', cards: [ { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous.' } ]},
-    },
-    scenarios: {
-        1: {
-            title: "Handling Client Resistance",
-            startNode: 'start',
-            nodes: {
-                'start': { prompt: "Your client says, 'I know I should exercise, but I just don't feel like it.' What's your first response?", choices: [ { text: "Don't worry, you can try again next week.", nextNode: 'reassurance' }, { text: "It sounds like you're feeling discouraged.", nextNode: 'reflection' } ] },
-                'reassurance': { prompt: "The client still seems disengaged. This response was okay, but glossed over her feelings. What's a better approach?", choices: [ { text: "Let's explore that feeling of discouragement.", nextNode: 'reflection' } ] },
-                'reflection': { prompt: "The client opens up. 'Yes, that's exactly it! I feel like a failure.' You've built trust. What's next?", choices: [ { text: "What would one small win look like this week?", nextNode: 'end_positive' } ] },
-                'end_positive': { prompt: "You've successfully navigated the conversation. Excellent work!", choices: [], end: "You used reflective listening to validate the client's feelings." },
-            }
-        }
-    },
-    puzzles: {
-        1: {
-            title: 'The Coaching Session Flow',
-            correctOrder: ['Establish Trust & Rapport', 'Create Coaching Agreement', 'Explore Client\'s Vision & Goals', 'Co-create Action Plan', 'Manage Progress & Accountability'],
-            items: ['Explore Client\'s Vision & Goals', 'Manage Progress & Accountability', 'Establish Trust & Rapport', 'Co-create Action Plan', 'Create Coaching Agreement']
-        }
-    }
-};
-
 
 // --- 4. AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -192,32 +149,27 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         
         const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
         
-        if (questionsResult.rows.length > 0) {
-            const formattedQuestions = questionsResult.rows.map(q => {
-                const correctAnswer = q.options.find(opt => opt.is_correct);
-                if (!correctAnswer) {
-                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
-                    return null;
-                }
-                return {
-                    id: q.question_id,
-                    question: q.question_text,
-                    explanation: q.explanation,
-                    eli5: q.eli5_explanation,
-                    answer: correctAnswer.option_text,
-                    options: q.options.map(opt => opt.option_text)
-                };
-            }).filter(Boolean);
-            
-            return res.json(formattedQuestions);
+        if (questionsResult.rows.length === 0) {
+            return res.status(404).json({ message: `No questions found for topic: ${topic}`});
         }
         
-        // --- FALLBACK TO MOCK DATA IF DB IS EMPTY ---
-        console.warn(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
-        const mockQuestions = contentDB.questions[topic] || [];
-        const shuffled = mockQuestions.sort(() => 0.5 - Math.random());
-        const selectedQuestions = shuffled.slice(0, numQuestions);
-        res.json(selectedQuestions);
+        const formattedQuestions = questionsResult.rows.map(q => {
+            const correctAnswer = q.options.find(opt => opt.is_correct);
+            if (!correctAnswer) {
+                console.error(`Question ID ${q.question_id} is missing a correct answer.`);
+                return null;
+            }
+            return {
+                id: q.question_id,
+                question: q.question_text,
+                explanation: q.explanation,
+                eli5: q.eli5_explanation,
+                answer: correctAnswer.option_text,
+                options: q.options.map(opt => opt.option_text)
+            };
+        }).filter(Boolean);
+        
+        res.json(formattedQuestions);
 
     } catch (error) {
         console.error('Error generating quiz:', error);
@@ -225,6 +177,7 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
     }
 });
 
+// --- NEW QUIZ SUBMISSION ROUTE ---
 app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
     const { topic, correctAnswers, totalQuestions } = req.body;
     const userId = req.user.userId;
@@ -262,6 +215,7 @@ app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
     }
 });
 
+// --- NEW ANALYTICS ROUTE ---
 app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
     const { topic } = req.query;
     const userId = req.user.userId;
@@ -280,30 +234,6 @@ app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
         console.error('Error fetching mastery trend:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
-});
-
-app.get('/api/flashcards/decks', authenticateToken, (req, res) => {
-    const decks = Object.values(contentDB.flashcards).map(deck => ({ id: deck.id, name: deck.name }));
-    res.json(decks);
-});
-
-app.get('/api/flashcards/decks/:deckId', authenticateToken, (req, res) => {
-    const { deckId } = req.params;
-    const deck = contentDB.flashcards[deckId];
-    if (deck) res.json(deck.cards);
-    else res.status(404).json({ message: 'Deck not found' });
-});
-
-app.get('/api/scenarios/:id', authenticateToken, (req, res) => {
-    const scenario = contentDB.scenarios[req.params.id];
-    if (scenario) res.json(scenario);
-    else res.status(404).json({ message: 'Scenario not found' });
-});
-
-app.get('/api/puzzles/:id', authenticateToken, (req, res) => {
-    const puzzle = contentDB.puzzles[req.params.id];
-    if (puzzle) res.json(puzzle);
-    else res.status(404).json({ message: 'Puzzle not found' });
 });
 
 // --- 6. START THE SERVER ---
