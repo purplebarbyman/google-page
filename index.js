@@ -225,6 +225,10 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         
         if (questionsResult.rows.length > 0) {
             const formattedQuestions = questionsResult.rows.map(q => {
+                if (!q.options || q.options.length === 0) {
+                    console.error(`Question ID ${q.question_id} has no options.`);
+                    return null;
+                }
                 const correctAnswer = q.options.find(opt => opt.is_correct);
                 if (!correctAnswer) {
                     console.error(`Question ID ${q.question_id} is missing a correct answer.`);
