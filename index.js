@@ -1,9 +1,9 @@
 // =================================================================
 // NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL VERSION)
 // =================================================================
-// This version uses the live database for users/stats and quizzes,
-// but serves an expanded content library for other interactive
-// features like flashcards to ensure stability and a rich experience.
+// This is the production-ready backend. It reads all content,
+// including quizzes and flashcards, directly from the PostgreSQL
+// database. All mock data has been removed.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -30,63 +30,6 @@ const pool = new Pool({
 
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
-
-// --- BUILT-IN CONTENT LIBRARY (for non-quiz features) ---
-const contentDB = {
-    flashcards: {
-        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [
-            { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another from their perspective, which is a cornerstone of the client-coach relationship.' },
-            { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change. The coach\'s role is to elicit and reinforce this.' },
-            { id: 3, term: 'Sustain Talk', definition: 'The client\'s own arguments for not changing, for maintaining the status quo.' },
-            { id: 4, term: 'Rolling with Resistance', definition: 'A strategy of not directly opposing client resistance but rather flowing with it to avoid confrontation.' },
-            { id: 5, term: 'Developing Discrepancy', definition: 'Helping a client see the gap between their current behavior and their deeper goals and values.' },
-            { id: 6, term: 'OARS', definition: 'A set of core communication skills: Open questions, Affirmations, Reflections, and Summaries.' },
-            { id: 7, term: 'Simple Reflection', definition: 'A reflection that repeats or slightly rephrases what the client has said.' },
-            { id: 8, term: 'Complex Reflection', definition: 'A reflection that adds meaning or reflects an unstated feeling, often leading to deeper insight.' },
-            { id: 18, term: 'Affirmation', definition: 'A statement that recognizes a client\'s strengths, efforts, and positive attributes. It must be genuine and specific.'},
-            { id: 19, term: 'Open-Ended Questions', definition: 'Questions that cannot be answered with a simple "yes" or "no" and invite the client to explore their thoughts and feelings.'},
-            { id: 20, term: 'Summarizing', definition: 'A skill used to link together and reinforce material that has been discussed, showing the client you have been listening.'},
-            { id: 21, term: 'Elicit-Provide-Elicit', definition: 'A framework for sharing information: Elicit what the client already knows, Provide new information, and Elicit their reaction or interpretation.'},
-        ]},
-        'smart': { id: 'smart', name: 'SMART Goals', cards: [
-            { id: 9, term: 'Specific', definition: 'The goal is clear, unambiguous, and answers the questions: Who, what, where, when, and why.' },
-            { id: 10, term: 'Measurable', definition: 'The goal has concrete criteria for tracking progress and measuring success.' },
-            { id: 11, term: 'Achievable', definition: 'The goal is realistic and attainable for the individual, given their resources and constraints.' },
-            { id: 12, term: 'Relevant', definition: 'The goal matters to the individual and aligns with their broader objectives and values.' },
-            { id: 13, term: 'Time-bound', definition: 'The goal has a target date or deadline, which creates a sense of urgency.' },
-            { id: 22, term: 'Performance Goal', definition: 'A goal focused on an individual\'s own performance, which is within their control (e.g., "I will run 3 times this week").'},
-            { id: 23, term: 'Outcome Goal', definition: 'A goal focused on a result that may be influenced by external factors (e.g., "I will lose 5 pounds").'},
-        ]},
-        'ethics': { id: 'ethics', name: 'Core Ethics', cards: [
-            { id: 14, term: 'Confidentiality', definition: 'The ethical duty to keep all client information private, unless required by law.' },
-            { id: 15, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake in keeping with the terms of their certification.' },
-            { id: 16, term: 'Dual Relationship', definition: 'When a coach has a second, significantly different relationship with their client in addition to the coaching relationship (e.g., friend, family, business partner).' },
-            { id: 17, term: 'Informed Consent', definition: 'The process of ensuring a client understands the nature of the coaching relationship, including risks, benefits, and logistics, before it begins.' },
-            { id: 24, term: 'Conflict of Interest', definition: 'A situation in which a coach has competing professional or personal interests that could potentially interfere with their objectivity.'},
-            { id: 25, term: 'Referral', definition: 'The process of directing a client to another professional when their needs fall outside the coach\'s scope of practice or expertise.'},
-        ]}
-    },
-    scenarios: {
-        1: {
-            title: "Handling Client Resistance",
-            startNode: 'start',
-            nodes: {
-                'start': { prompt: "Your client says, 'I know I should exercise, but I just don't feel like it.' What's your first response?", choices: [ { text: "Don't worry, you can try again next week.", nextNode: 'reassurance' }, { text: "It sounds like you're feeling discouraged.", nextNode: 'reflection' } ] },
-                'reassurance': { prompt: "The client still seems disengaged. This response was okay, but glossed over her feelings. What's a better approach?", choices: [ { text: "Let's explore that feeling of discouragement.", nextNode: 'reflection' } ] },
-                'reflection': { prompt: "The client opens up. 'Yes, that's exactly it! I feel like a failure.' You've built trust. What's next?", choices: [ { text: "What would one small win look like this week?", nextNode: 'end_positive' } ] },
-                'end_positive': { prompt: "You've successfully navigated the conversation. Excellent work!", choices: [], end: "You used reflective listening to validate the client's feelings." },
-            }
-        }
-    },
-    puzzles: {
-        1: {
-            title: 'The Coaching Session Flow',
-            correctOrder: ['Establish Trust & Rapport', 'Create Coaching Agreement', 'Explore Client\'s Vision & Goals', 'Co-create Action Plan', 'Manage Progress & Accountability'],
-            items: ['Explore Client\'s Vision & Goals', 'Manage Progress & Accountability', 'Establish Trust & Rapport', 'Co-create Action Plan', 'Create Coaching Agreement']
-        }
-    }
-};
-
 
 // --- 4. AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -231,36 +174,31 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         
         const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
         
-        if (questionsResult.rows.length > 0) {
-            const formattedQuestions = questionsResult.rows.map(q => {
-                if (!q.options || q.options.length === 0) {
-                    console.error(`Question ID ${q.question_id} has no options.`);
-                    return null;
-                }
-                const correctAnswer = q.options.find(opt => opt.is_correct);
-                if (!correctAnswer) {
-                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
-                    return null;
-                }
-                return {
-                    id: q.question_id,
-                    question: q.question_text,
-                    explanation: q.explanation,
-                    eli5: q.eli5_explanation,
-                    answer: correctAnswer.option_text,
-                    options: q.options.map(opt => opt.option_text)
-                };
-            }).filter(Boolean);
-            
-            return res.json(formattedQuestions);
+        if (questionsResult.rows.length === 0) {
+            return res.status(404).json({ message: `No questions found for topic: ${topic}`});
         }
         
-        // --- FALLBACK TO MOCK DATA IF DB IS EMPTY ---
-        console.warn(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
-        const mockQuestions = contentDB.questions[topic] || [];
-        const shuffled = mockQuestions.sort(() => 0.5 - Math.random());
-        const selectedQuestions = shuffled.slice(0, numQuestions);
-        res.json(selectedQuestions);
+        const formattedQuestions = questionsResult.rows.map(q => {
+            if (!q.options || q.options.length === 0) {
+                console.error(`Question ID ${q.question_id} has no options.`);
+                return null;
+            }
+            const correctAnswer = q.options.find(opt => opt.is_correct);
+            if (!correctAnswer) {
+                console.error(`Question ID ${q.question_id} is missing a correct answer.`);
+                return null;
+            }
+            return {
+                id: q.question_id,
+                question: q.question_text,
+                explanation: q.explanation,
+                eli5: q.eli5_explanation,
+                answer: correctAnswer.option_text,
+                options: q.options.map(opt => opt.option_text)
+            };
+        }).filter(Boolean);
+        
+        res.json(formattedQuestions);
 
     } catch (error) {
         console.error('Error generating quiz:', error);
@@ -325,28 +263,25 @@ app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/api/flashcards/decks', authenticateToken, (req, res) => {
-    const decks = Object.values(contentDB.flashcards).map(deck => ({ id: deck.id, name: deck.name }));
-    res.json(decks);
+app.get('/api/flashcards/decks', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT DISTINCT t.topic_name as name, t.topic_id as id FROM topics t JOIN flashcards f ON t.topic_id = f.topic_id ORDER BY t.topic_name');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching flashcard decks:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
 });
 
-app.get('/api/flashcards/decks/:deckId', authenticateToken, (req, res) => {
-    const { deckId } = req.params;
-    const deck = contentDB.flashcards[deckId];
-    if (deck) res.json(deck.cards);
-    else res.status(404).json({ message: 'Deck not found' });
-});
-
-app.get('/api/scenarios/:id', authenticateToken, (req, res) => {
-    const scenario = contentDB.scenarios[req.params.id];
-    if (scenario) res.json(scenario);
-    else res.status(404).json({ message: 'Scenario not found' });
-});
-
-app.get('/api/puzzles/:id', authenticateToken, (req, res) => {
-    const puzzle = contentDB.puzzles[req.params.id];
-    if (puzzle) res.json(puzzle);
-    else res.status(404).json({ message: 'Puzzle not found' });
+app.get('/api/flashcards/decks/:deckId', authenticateToken, async (req, res) => {
+    try {
+        const { deckId } = req.params;
+        const result = await pool.query('SELECT term, definition FROM flashcards WHERE topic_id = $1', [deckId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching flashcards:', error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
 });
 
 // --- 6. START THE SERVER ---
