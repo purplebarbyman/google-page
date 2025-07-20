@@ -43,6 +43,10 @@ const contentDB = {
             { id: 6, term: 'OARS', definition: 'A set of core communication skills: Open questions, Affirmations, Reflections, and Summaries.' },
             { id: 7, term: 'Simple Reflection', definition: 'A reflection that repeats or slightly rephrases what the client has said.' },
             { id: 8, term: 'Complex Reflection', definition: 'A reflection that adds meaning or reflects an unstated feeling, often leading to deeper insight.' },
+            { id: 18, term: 'Affirmation', definition: 'A statement that recognizes a client\'s strengths, efforts, and positive attributes. It must be genuine and specific.'},
+            { id: 19, term: 'Open-Ended Questions', definition: 'Questions that cannot be answered with a simple "yes" or "no" and invite the client to explore their thoughts and feelings.'},
+            { id: 20, term: 'Summarizing', definition: 'A skill used to link together and reinforce material that has been discussed, showing the client you have been listening.'},
+            { id: 21, term: 'Elicit-Provide-Elicit', definition: 'A framework for sharing information: Elicit what the client already knows, Provide new information, and Elicit their reaction or interpretation.'},
         ]},
         'smart': { id: 'smart', name: 'SMART Goals', cards: [
             { id: 9, term: 'Specific', definition: 'The goal is clear, unambiguous, and answers the questions: Who, what, where, when, and why.' },
@@ -50,12 +54,16 @@ const contentDB = {
             { id: 11, term: 'Achievable', definition: 'The goal is realistic and attainable for the individual, given their resources and constraints.' },
             { id: 12, term: 'Relevant', definition: 'The goal matters to the individual and aligns with their broader objectives and values.' },
             { id: 13, term: 'Time-bound', definition: 'The goal has a target date or deadline, which creates a sense of urgency.' },
+            { id: 22, term: 'Performance Goal', definition: 'A goal focused on an individual\'s own performance, which is within their control (e.g., "I will run 3 times this week").'},
+            { id: 23, term: 'Outcome Goal', definition: 'A goal focused on a result that may be influenced by external factors (e.g., "I will lose 5 pounds").'},
         ]},
         'ethics': { id: 'ethics', name: 'Core Ethics', cards: [
             { id: 14, term: 'Confidentiality', definition: 'The ethical duty to keep all client information private, unless required by law.' },
             { id: 15, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake in keeping with the terms of their certification.' },
             { id: 16, term: 'Dual Relationship', definition: 'When a coach has a second, significantly different relationship with their client in addition to the coaching relationship (e.g., friend, family, business partner).' },
             { id: 17, term: 'Informed Consent', definition: 'The process of ensuring a client understands the nature of the coaching relationship, including risks, benefits, and logistics, before it begins.' },
+            { id: 24, term: 'Conflict of Interest', definition: 'A situation in which a coach has competing professional or personal interests that could potentially interfere with their objectivity.'},
+            { id: 25, term: 'Referral', definition: 'The process of directing a client to another professional when their needs fall outside the coach\'s scope of practice or expertise.'},
         ]}
     },
     scenarios: {
