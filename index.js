@@ -1,10 +1,8 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL VERSION)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (V8)
 // =================================================================
-// This is the production-ready backend. It reads all content,
-// including quizzes and user data, directly from the PostgreSQL
-// database. This version includes more robust error handling for
-// malformed question data.
+// This version adds the ability to save and retrieve user-generated
+// study plans from the database, making them persistent.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -23,10 +21,10 @@ app.use(cors());
 
 // --- DATABASE CONNECTION ---
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // --- JWT CONFIGURATION ---
@@ -34,115 +32,129 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-d
 
 // --- 4. AUTHENTICATION MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (token == null) return res.sendStatus(401);
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (token == null) return res.sendStatus(401);
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
 };
 
 // --- 5. API ROUTES ---
 
 // --- AUTH ROUTES ---
 app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { fullName, email, password } = req.body;
+    if (!fullName || !email || !password) return res.status(400).json({ message: 'All fields are required.' });
+    
+    const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) return res.status(409).json({ message: 'Email already exists.' });
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    const client = await pool.connect();
     try {
-        const { fullName, email, password } = req.body;
-        if (!fullName || !email || !password) {
-            return res.status(400).json({ message: 'All fields are required.' });
+        await client.query('BEGIN');
+        const newUserQuery = 'INSERT INTO users (full_name, email, password_hash) VALUES ($1, $2, $3) RETURNING user_id, email, full_name';
+        const newUser = await client.query(newUserQuery, [fullName, email, passwordHash]);
+        const userId = newUser.rows[0].user_id;
+
+        await client.query('INSERT INTO user_stats (user_id, points, current_streak, level, readiness) VALUES ($1, 0, 0, 1, 5)', [userId]);
+        
+        const topicsResult = await client.query('SELECT topic_name FROM topics');
+        for (const row of topicsResult.rows) {
+            await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, row.topic_name]);
         }
 
-        const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-        if (userExists.rows.length > 0) {
-            return res.status(409).json({ message: 'Email already exists.' });
-        }
-
-        const passwordHash = await bcrypt.hash(password, 10);
-
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            const newUserQuery = 'INSERT INTO users (full_name, email, password_hash) VALUES ($1, $2, $3) RETURNING user_id, email, full_name';
-            const newUser = await client.query(newUserQuery, [fullName, email, passwordHash]);
-            const userId = newUser.rows[0].user_id;
-
-            await client.query('INSERT INTO user_stats (user_id, points, current_streak, level, readiness) VALUES ($1, 0, 0, 1, 5)', [userId]);
-
-            const topicsResult = await client.query('SELECT topic_name FROM topics');
-            for (const row of topicsResult.rows) {
-                await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, row.topic_name]);
-            }
-
-            await client.query('COMMIT');
-            res.status(201).json(newUser.rows[0]);
-        } catch (e) {
-            await client.query('ROLLBACK');
-            throw e;
-        } finally {
-            client.release();
-        }
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ message: 'Internal server error.' });
+        await client.query('COMMIT');
+        res.status(201).json(newUser.rows[0]);
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
     }
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-        const user = result.rows[0];
-        if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
-        }
+  try {
+    const { email, password } = req.body;
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ message: 'Invalid credentials.' });
+    
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials.' });
 
-        const isMatch = await bcrypt.compare(password, user.password_hash);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
-        }
-
-        const payload = { userId: user.user_id, email: user.email, name: user.full_name };
-        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-        res.json({ token, user: payload });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ message: 'Internal server error.' });
-    }
+    const payload = { userId: user.user_id, email: user.email, name: user.full_name };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token, user: payload });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
 });
 
 // --- DATA ROUTES ---
 
 app.get('/api/user/data', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const [statsRes, masteryRes, achievementsRes, planRes] = await Promise.all([
+        pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId]),
+        pool.query('SELECT topic_name, mastery_score FROM user_mastery WHERE user_id = $1', [userId]),
+        pool.query('SELECT achievement_id FROM user_achievements WHERE user_id = $1', [userId]),
+        pool.query('SELECT settings, plan_data FROM user_study_plans WHERE user_id = $1', [userId])
+    ]);
+
+    if (statsRes.rows.length === 0) return res.status(404).json({ message: 'User data not found.' });
+
+    const mastery = masteryRes.rows.reduce((acc, row) => ({...acc, [row.topic_name]: row.mastery_score }), {});
+    const unlockedAchievements = achievementsRes.rows.map(row => row.achievement_id);
+    const plan = planRes.rows[0];
+
+    res.json({
+        stats: statsRes.rows[0],
+        mastery: mastery,
+        unlockedAchievements: unlockedAchievements,
+        planSettings: plan ? plan.settings : null,
+        personalizedPlan: plan ? plan.plan_data : null
+    });
+
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+app.post('/api/study-plan', authenticateToken, async (req, res) => {
+    const { settings, plan } = req.body;
+    const userId = req.user.userId;
+
     try {
-        const userId = req.user.userId;
-
-        const [statsRes, masteryRes, achievementsRes] = await Promise.all([
-            pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId]),
-            pool.query('SELECT topic_name, mastery_score FROM user_mastery WHERE user_id = $1', [userId]),
-            pool.query('SELECT achievement_id FROM user_achievements WHERE user_id = $1', [userId])
-        ]);
-
-        if (statsRes.rows.length === 0) {
-            return res.status(404).json({ message: 'User data not found.' });
-        }
-
-        const mastery = masteryRes.rows.reduce((acc, row) => ({...acc, [row.topic_name]: row.mastery_score }), {});
-        const unlockedAchievements = achievementsRes.rows.map(row => row.achievement_id);
-
-        res.json({
-            stats: statsRes.rows[0],
-            mastery: mastery,
-            unlockedAchievements: unlockedAchievements
-        });
-
+        const query = `
+            INSERT INTO user_study_plans (user_id, settings, plan_data)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id) DO UPDATE
+            SET settings = EXCLUDED.settings, plan_data = EXCLUDED.plan_data;
+        `;
+        await pool.query(query, [userId, settings, plan]);
+        res.status(200).json({ message: 'Study plan saved successfully.' });
     } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error saving study plan:', error);
         res.status(500).json({ message: 'Internal server error.' });
     }
 });
+
 
 app.post('/api/quizzes', authenticateToken, async (req, res) => {
     try {
@@ -158,18 +170,14 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
             ORDER BY RANDOM()
             LIMIT $2;
         `;
-
+        
         const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
-
+        
         if (questionsResult.rows.length === 0) {
-            return res.status(404).json({ message: `No questions found for topic: ${topic}` });
+            return res.status(404).json({ message: `No questions found for topic: ${topic}`});
         }
-
+        
         const formattedQuestions = questionsResult.rows.map(q => {
-            if (!q.options || q.options.length === 0) {
-                console.error(`Question ID ${q.question_id} has no options.`);
-                return null;
-            }
             const correctAnswer = q.options.find(opt => opt.is_correct);
             if (!correctAnswer) {
                 console.error(`Question ID ${q.question_id} is missing a correct answer.`);
@@ -184,7 +192,7 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
                 options: q.options.map(opt => opt.option_text)
             };
         }).filter(Boolean);
-
+        
         res.json(formattedQuestions);
 
     } catch (error) {
@@ -201,7 +209,7 @@ app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-
+        
         const pointsEarned = (correctAnswers * 10) + (score === 100 ? 50 : 0);
         await client.query('UPDATE user_stats SET points = points + $1 WHERE user_id = $2', [pointsEarned, userId]);
 
@@ -209,13 +217,15 @@ app.post('/api/quizzes/submit', authenticateToken, async (req, res) => {
         const currentMastery = masteryResult.rows[0]?.mastery_score || 0;
         const newMastery = Math.min(100, Math.round(currentMastery + (score / 100 * 20)));
         await client.query(
-            'UPDATE user_mastery SET mastery_score = $1 WHERE user_id = $2 AND topic_name = $3', [newMastery, userId, topic]
+            'UPDATE user_mastery SET mastery_score = $1 WHERE user_id = $2 AND topic_name = $3',
+            [newMastery, userId, topic]
         );
-
+        
         await client.query(
-            'INSERT INTO user_mastery_history (user_id, topic_name, mastery_score) VALUES ($1, $2, $3)', [userId, topic, newMastery]
+            'INSERT INTO user_mastery_history (user_id, topic_name, mastery_score) VALUES ($1, $2, $3)',
+            [userId, topic, newMastery]
         );
-
+        
         await client.query('COMMIT');
         res.status(200).json({ message: 'Progress saved successfully.' });
 
@@ -238,7 +248,8 @@ app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
 
     try {
         const result = await pool.query(
-            'SELECT mastery_score, recorded_at FROM user_mastery_history WHERE user_id = $1 AND topic_name = $2 ORDER BY recorded_at ASC', [userId, topic]
+            'SELECT mastery_score, recorded_at FROM user_mastery_history WHERE user_id = $1 AND topic_name = $2 ORDER BY recorded_at ASC',
+            [userId, topic]
         );
         res.json(result.rows);
     } catch (error) {
@@ -249,5 +260,5 @@ app.get('/api/analytics/mastery-trend', authenticateToken, async (req, res) => {
 
 // --- 6. START THE SERVER ---
 app.listen(port, () => {
-    console.log(`NBHWC Backend Server is running on http://localhost:${port}`);
+  console.log(`NBHWC Backend Server is running on http://localhost:${port}`);
 });
