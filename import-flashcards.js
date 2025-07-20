@@ -3,7 +3,7 @@
 // =================================================================
 // This is a one-time use script to read flashcards from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version corrects the logical error in the connection string check.
+// This version corrects a bug in the database insertion logic.
 // =================================================================
 
 const fs = require('fs');
@@ -82,9 +82,10 @@ async function processFlashcardCSV() {
         continue;
       }
 
+      // CORRECTED THIS LINE: Use the 'topicId' variable instead of 'card.topicId'
       await client.query(
         'INSERT INTO flashcards (topic_id, term, definition) VALUES ($1, $2, $3)',
-        [card.topicId, card.term, card.definition]
+        [topicId, card.term, card.definition]
       );
     }
 
