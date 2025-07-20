@@ -1,9 +1,9 @@
 // =================================================================
-// NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL COMPLETE VERSION)
+// NBHWC STUDY PLATFORM - BACKEND API SERVER (FINAL VERSION)
 // =================================================================
-// This version includes all necessary API endpoints for quizzes,
-// flashcards, scenarios, and other interactive content, served from
-// a reliable internal library to ensure stability.
+// This version uses the live database for users/stats and quizzes,
+// but serves an expanded content library for other interactive
+// features like flashcards to ensure stability and a rich experience.
 // =================================================================
 
 // --- 1. IMPORTS & SETUP ---
@@ -31,27 +31,32 @@ const pool = new Pool({
 // --- JWT CONFIGURATION ---
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-development';
 
-// --- BUILT-IN CONTENT LIBRARY ---
+// --- BUILT-IN CONTENT LIBRARY (for non-quiz features) ---
 const contentDB = {
-    topics: [
-        { id: 1, name: 'Coaching Structure' },
-        { id: 5, name: 'Motivational Interviewing' },
-        { id: 6, name: 'SMART Goals' },
-        { id: 7, name: 'HIPAA Basics' },
-    ],
-    questions: {
-        'Motivational Interviewing': [
-            { id: 1, question: "Which is a core principle of MI?", options: ["Expressing empathy", "Giving advice"], answer: "Expressing empathy", explanation: "Expressing empathy involves seeing the world from the client's perspective and communicating that understanding. It's foundational to building trust and is a core part of the MI spirit.", eli5: "It means showing you understand how someone feels." },
-            { id: 2, question: "What is 'rolling with resistance'?", options: ["Arguing with the client", "Accepting client's reluctance"], answer: "Accepting client's reluctance", explanation: "Resistance is a signal to change strategies. Instead of confronting it, the coach 'rolls with it' to avoid a power struggle.", eli5: "Instead of fighting when someone says 'I can't,' you say 'Okay, let's talk about that.'" },
-        ],
-        'SMART Goals': [
-            { id: 5, question: "What does 'S' in SMART stand for?", options: ["Specific", "Simple"], answer: "Specific", explanation: "A specific goal has a much greater chance of being accomplished than a general goal.", eli5: "Instead of 'be healthier,' you say exactly *what* you'll do." },
-        ],
-    },
     flashcards: {
-        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [ { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another.' }, { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change.' } ]},
-        'smart': { id: 'smart', name: 'SMART Goals', cards: [ { id: 4, term: 'Specific', definition: 'The goal is clear and unambiguous.' } ]},
-        'ethics': { id: 'ethics', name: 'Core Ethics', cards: [ { id: 9, term: 'Confidentiality', definition: 'The ethical duty to keep client information private.' } ]},
+        'mi': { id: 'mi', name: 'Motivational Interviewing', cards: [
+            { id: 1, term: 'Empathy', definition: 'The ability to understand and share the feelings of another from their perspective, which is a cornerstone of the client-coach relationship.' },
+            { id: 2, term: 'Change Talk', definition: 'Any self-expressed language that is an argument for change. The coach\'s role is to elicit and reinforce this.' },
+            { id: 3, term: 'Sustain Talk', definition: 'The client\'s own arguments for not changing, for maintaining the status quo.' },
+            { id: 4, term: 'Rolling with Resistance', definition: 'A strategy of not directly opposing client resistance but rather flowing with it to avoid confrontation.' },
+            { id: 5, term: 'Developing Discrepancy', definition: 'Helping a client see the gap between their current behavior and their deeper goals and values.' },
+            { id: 6, term: 'OARS', definition: 'A set of core communication skills: Open questions, Affirmations, Reflections, and Summaries.' },
+            { id: 7, term: 'Simple Reflection', definition: 'A reflection that repeats or slightly rephrases what the client has said.' },
+            { id: 8, term: 'Complex Reflection', definition: 'A reflection that adds meaning or reflects an unstated feeling, often leading to deeper insight.' },
+        ]},
+        'smart': { id: 'smart', name: 'SMART Goals', cards: [
+            { id: 9, term: 'Specific', definition: 'The goal is clear, unambiguous, and answers the questions: Who, what, where, when, and why.' },
+            { id: 10, term: 'Measurable', definition: 'The goal has concrete criteria for tracking progress and measuring success.' },
+            { id: 11, term: 'Achievable', definition: 'The goal is realistic and attainable for the individual, given their resources and constraints.' },
+            { id: 12, term: 'Relevant', definition: 'The goal matters to the individual and aligns with their broader objectives and values.' },
+            { id: 13, term: 'Time-bound', definition: 'The goal has a target date or deadline, which creates a sense of urgency.' },
+        ]},
+        'ethics': { id: 'ethics', name: 'Core Ethics', cards: [
+            { id: 14, term: 'Confidentiality', definition: 'The ethical duty to keep all client information private, unless required by law.' },
+            { id: 15, term: 'Scope of Practice', definition: 'The procedures, actions, and processes that a professional is permitted to undertake in keeping with the terms of their certification.' },
+            { id: 16, term: 'Dual Relationship', definition: 'When a coach has a second, significantly different relationship with their client in addition to the coaching relationship (e.g., friend, family, business partner).' },
+            { id: 17, term: 'Informed Consent', definition: 'The process of ensuring a client understands the nature of the coaching relationship, including risks, benefits, and logistics, before it begins.' },
+        ]}
     },
     scenarios: {
         1: {
@@ -110,6 +115,11 @@ app.post('/api/auth/register', async (req, res) => {
 
         await client.query('INSERT INTO user_stats (user_id) VALUES ($1)', [userId]);
         
+        const topicsResult = await client.query('SELECT topic_name FROM topics');
+        for (const row of topicsResult.rows) {
+            await client.query('INSERT INTO user_mastery (user_id, topic_name, mastery_score) VALUES ($1, $2, 0)', [userId, row.topic_name]);
+        }
+
         await client.query('COMMIT');
         res.status(201).json(newUser.rows[0]);
     } catch (e) {
@@ -215,6 +225,10 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         
         if (questionsResult.rows.length > 0) {
             const formattedQuestions = questionsResult.rows.map(q => {
+                if (!q.options || q.options.length === 0) {
+                    console.error(`Question ID ${q.question_id} has no options.`);
+                    return null;
+                }
                 const correctAnswer = q.options.find(opt => opt.is_correct);
                 if (!correctAnswer) {
                     console.error(`Question ID ${q.question_id} is missing a correct answer.`);
