@@ -1,9 +1,9 @@
 // =================================================================
-// NBHWC PLATFORM - FLASHCARD CSV IMPORTER SCRIPT
+// NBHWC PLATFORM - FLASHCARD CSV IMPORTER SCRIPT (Final Corrected Version)
 // =================================================================
 // This is a one-time use script to read flashcards from a CSV file
 // and insert them into your live PostgreSQL database on Render.
-// This version corrects a bug in the database insertion logic.
+// This version now creates topics if they don't exist.
 // =================================================================
 
 const fs = require('fs');
@@ -76,13 +76,20 @@ async function processFlashcardCSV() {
     console.log('Inserting new flashcard data...');
 
     for (const card of flashcards) {
-      const topicId = topicMap.get(card.topic);
-      if (!topicId) {
-        console.warn(`Warning: Topic "${card.topic}" not found in the database. Skipping flashcard: "${card.term}"`);
-        continue;
+      let topicId;
+      if (topicMap.has(card.topic)) {
+        topicId = topicMap.get(card.topic);
+      } else {
+        // If topic doesn't exist, create it and add it to our map
+        console.log(`Topic "${card.topic}" not found, creating it...`);
+        const newTopicResult = await client.query(
+          'INSERT INTO topics (topic_name) VALUES ($1) ON CONFLICT (topic_name) DO UPDATE SET topic_name = EXCLUDED.topic_name RETURNING topic_id',
+          [card.topic]
+        );
+        topicId = newTopicResult.rows[0].topic_id;
+        topicMap.set(card.topic, topicId);
       }
 
-      // CORRECTED THIS LINE: Use the 'topicId' variable instead of 'card.topicId'
       await client.query(
         'INSERT INTO flashcards (topic_id, term, definition) VALUES ($1, $2, $3)',
         [topicId, card.term, card.definition]
@@ -90,7 +97,7 @@ async function processFlashcardCSV() {
     }
 
     await client.query('COMMIT');
-    console.log(`Successfully inserted flashcards into the database.`);
+    console.log(`Successfully inserted ${flashcards.length} flashcards into the database.`);
 
   } catch (e) {
     await client.query('ROLLBACK');
