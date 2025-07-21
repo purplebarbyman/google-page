@@ -335,10 +335,20 @@ app.get('/api/flashcards/decks/:deckId', authenticateToken, async (req, res) => 
     }
 });
 
+app.get('/api/scenarios', authenticateToken, (req, res) => {
+    const scenarioList = Object.values(contentDB.scenarios).map(s => ({ id: s.id, title: s.title }));
+    res.json(scenarioList);
+});
+
 app.get('/api/scenarios/:id', authenticateToken, (req, res) => {
     const scenario = contentDB.scenarios[req.params.id];
     if (scenario) res.json(scenario);
     else res.status(404).json({ message: 'Scenario not found' });
+});
+
+app.get('/api/puzzles', authenticateToken, (req, res) => {
+    const puzzleList = Object.values(contentDB.puzzles).map(p => ({ id: p.id, title: p.title }));
+    res.json(puzzleList);
 });
 
 app.get('/api/puzzles/:id', authenticateToken, (req, res) => {
