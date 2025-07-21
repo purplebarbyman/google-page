@@ -46,6 +46,18 @@ const contentDB = {
                 'end_positive': { prompt: "You've successfully navigated the conversation, building rapport and opening the door for productive goal-setting. Excellent work!", choices: [], end: "You used reflective listening to validate the client's feelings, which is a key coaching competency." },
                 'end_neutral': { prompt: "You've moved on, but missed a key opportunity to connect with the client's emotional state. The scenario ends here.", choices: [], end: "While not a bad outcome, exploring the client's feelings first would have been more effective." }
             }
+        },
+        2: {
+            id: 2,
+            title: "Scope of Practice",
+            startNode: 'start',
+            nodes: {
+                'start': { prompt: "A client tells you they've been feeling very depressed and asks if you think they should try a specific antidepressant they saw online. What is the most appropriate response?", choices: [ { text: "Tell them you've heard good things about it and it might be worth a try.", nextNode: 'bad_advice' }, { text: "Explain that discussing or recommending medication is outside your scope of practice as a coach.", nextNode: 'scope' }, { text: "Suggest some herbal remedies that you've used for low mood.", nextNode: 'bad_advice' } ] },
+                'bad_advice': { prompt: "This is dangerous and outside your scope of practice. Recommending any specific treatment, including supplements, constitutes practicing medicine without a license. This has put you in an ethically and legally risky position.", choices: [], end: "Always refer clients to a qualified medical professional for questions about medication or diagnosis." },
+                'scope': { prompt: "Excellent. You've correctly identified the boundary of your scope of practice. What is a helpful next step?", choices: [ { text: "Encourage the client to discuss these feelings and questions with their primary care physician or a mental health professional.", nextNode: 'end_positive' }, { text: "Change the subject to their original wellness goals to avoid the topic.", nextNode: 'end_neutral' } ] },
+                'end_positive': { prompt: "This is the best course of action. You have maintained your professional boundary while empowering the client to seek the appropriate care.", choices: [], end: "Your role is to coach, not to prescribe or diagnose. Referring out is a key coaching skill." },
+                'end_neutral': { prompt: "While you avoided giving bad advice, you missed an opportunity to support your client in getting the help they may need. A direct referral is the stronger coaching action.", choices: [], end: "Part of coaching is recognizing when a client's needs require a different kind of professional support." }
+            }
         }
     },
     puzzles: {
@@ -208,31 +220,36 @@ app.post('/api/quizzes', authenticateToken, async (req, res) => {
         
         const questionsResult = await pool.query(questionsQuery, [topic, numQuestions]);
         
-        if (questionsResult.rows.length === 0) {
-            return res.status(404).json({ message: `No questions found for topic: ${topic}`});
+        if (questionsResult.rows.length > 0) {
+            const formattedQuestions = questionsResult.rows.map(q => {
+                if (!q.options || q.options.length === 0) {
+                    console.error(`Question ID ${q.question_id} has no options.`);
+                    return null;
+                }
+                const correctAnswer = q.options.find(opt => opt.is_correct);
+                if (!correctAnswer) {
+                    console.error(`Question ID ${q.question_id} is missing a correct answer.`);
+                    return null;
+                }
+                return {
+                    id: q.question_id,
+                    question: q.question_text,
+                    explanation: q.explanation,
+                    eli5: q.eli5_explanation,
+                    answer: correctAnswer.option_text,
+                    options: q.options.map(opt => opt.option_text)
+                };
+            }).filter(Boolean);
+            
+            return res.json(formattedQuestions);
         }
         
-        const formattedQuestions = questionsResult.rows.map(q => {
-            if (!q.options || q.options.length === 0) {
-                console.error(`Question ID ${q.question_id} has no options.`);
-                return null;
-            }
-            const correctAnswer = q.options.find(opt => opt.is_correct);
-            if (!correctAnswer) {
-                console.error(`Question ID ${q.question_id} is missing a correct answer.`);
-                return null;
-            }
-            return {
-                id: q.question_id,
-                question: q.question_text,
-                explanation: q.explanation,
-                eli5: q.eli5_explanation,
-                answer: correctAnswer.option_text,
-                options: q.options.map(opt => opt.option_text)
-            };
-        }).filter(Boolean);
-        
-        res.json(formattedQuestions);
+        // --- FALLBACK TO MOCK DATA IF DB IS EMPTY ---
+        console.warn(`No questions found in DB for topic "${topic}". Falling back to mock data.`);
+        const mockQuestions = contentDB.questions[topic] || [];
+        const shuffled = mockQuestions.sort(() => 0.5 - Math.random());
+        const selectedQuestions = shuffled.slice(0, numQuestions);
+        res.json(selectedQuestions);
 
     } catch (error) {
         console.error('Error generating quiz:', error);
